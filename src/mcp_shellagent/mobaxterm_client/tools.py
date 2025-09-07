@@ -3,65 +3,55 @@ import re
 import time
 import uuid
 import threading
-import win32gui
-import win32con
-import keyboard
+from pywinauto import Application, findwindows
+from pywinauto.keyboard import send_keys
+import warnings
 
+warnings.filterwarnings("ignore", category=UserWarning, module="pywinauto.application")
 
 class MobaXtermWindowFinder:
-    """负责查找 MobaXterm 主窗口和终端子窗口句柄。"""
+    def __init__(self, exe_path=None):
+        self.exe_path = exe_path
+        self.app = None
 
-    @staticmethod
-    def find():
-        hwnd_main = None
+    def connect(self):
+        if self.exe_path and os.path.exists(self.exe_path):
+            self.app = Application(backend="win32").start(self.exe_path)
+        else:
+            hwnds = findwindows.find_windows(class_name="TMobaXtermForm")
+            if not hwnds:
+                raise RuntimeError("未找到 MobaXterm 窗口")
+            self.app = Application(backend="win32").connect(handle=hwnds[0])
 
-        def enum_main(hwnd, _):
-            nonlocal hwnd_main
-            if win32gui.GetClassName(hwnd) == "TMobaXtermForm":
-                hwnd_main = hwnd
-                return False
-            return True
-
-        win32gui.EnumWindows(enum_main, None)
-        if not hwnd_main:
-            return None, None
-
-        term_hwnd = None
-
-        def enum_child(hwnd, _):
-            nonlocal term_hwnd
-            cls = win32gui.GetClassName(hwnd)
-            if any(x in cls for x in ("Xterm", "XTerm", "TX")):
-                term_hwnd = hwnd
-                return False
-            return True
-
-        win32gui.EnumChildWindows(hwnd_main, enum_child, None)
-        return hwnd_main, term_hwnd
+    def get_terminal_ctrl(self):
+        if not self.app:
+            self.connect()
+        main_win = self.app.window(class_name="TMobaXtermForm")
+        # 调试控件树
+        # main_win.print_control_identifiers()
+        return main_win
 
 
 class CommandInjector:
-    """负责把命令模拟键盘输入到 MobaXterm 窗口。"""
+    """使用 pywinauto 注入命令"""
 
     def __init__(self, window_finder=None):
         self.window_finder = window_finder or MobaXtermWindowFinder()
+        self.window_finder.connect()
+        self.terminal = self.window_finder.get_terminal_ctrl()
 
     def inject(self, cmd: str):
-        hwnd_main, term_hwnd = self.window_finder.find()
-        if not hwnd_main:
-            raise RuntimeError("未找到 MobaXterm 窗口句柄")
-
-        target = term_hwnd or hwnd_main
-        win32gui.ShowWindow(target, win32con.SW_RESTORE)
-        win32gui.SetForegroundWindow(target)
-        time.sleep(0.1)
-        keyboard.write(cmd, delay=0.01)
-        time.sleep(0.05)
-        keyboard.press_and_release("enter")
+        # 聚焦窗口
+        self.terminal.set_focus()
+        time.sleep(0.01)
+        # 输入命令
+        send_keys(cmd, with_spaces=True, pause=0.01)  # 保证空格正常输入
+        time.sleep(0.01)
+        send_keys("{ENTER}")
 
 
 class LogTailer:
-    """负责持续读取最新日志文件并清洗 ANSI 转义字符。"""
+    """持续读取最新日志文件并清洗 ANSI 转义字符。"""
 
     ANSI_ESCAPE = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
 
@@ -75,7 +65,8 @@ class LogTailer:
         self._thread = threading.Thread(target=self._tail, daemon=True)
         self._thread.start()
 
-    def _find_latest_log(self, log_dir: str):
+    @staticmethod
+    def _find_latest_log(log_dir: str):
         files = [
             os.path.join(log_dir, f)
             for f in os.listdir(log_dir)
@@ -113,7 +104,7 @@ class LogTailer:
 
 
 class RemoteShell:
-    """对外提供 send_command 方法，用标记截取输出。"""
+    """对外提供 send_command 方法"""
 
     def __init__(self, log_dir: str,
                  injector: CommandInjector = None,
@@ -126,17 +117,12 @@ class RemoteShell:
         start_marker = f"Agent Mode Start {uid}"
         end_marker = f"Agent Mode End {uid}"
 
-        # 清空旧日志
         self.tailer.clear()
 
-        # 注入标记与命令
         self.injector.inject(f"echo {start_marker}")
-        time.sleep(0.1)
         self.injector.inject(cmd)
-        time.sleep(0.1)
         self.injector.inject(f"echo {end_marker}")
 
-        # 等待并截取输出
         start_time = time.time()
         started = False
         captured = []
@@ -152,17 +138,16 @@ class RemoteShell:
                     captured.clear()
                     continue
                 if end_marker in line and started:
-                    # 过滤标记行并返回
                     output = "".join(captured)
                     clean_lines = [
                         ln for ln in output.splitlines()
-                        if ln.strip() and not ln.endswith(start_marker) and not ln.endswith(end_marker)
+                        if ln.strip()
                     ]
                     return "\n".join(clean_lines).strip()
                 if started:
                     captured.append(line)
 
-            time.sleep(0.05)
+            time.sleep(0.01)
 
     def close(self):
         self.tailer.stop()

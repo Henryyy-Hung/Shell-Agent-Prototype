@@ -9,15 +9,15 @@ def create_server() -> FastMCP:
     mcp_server = FastMCP(name="hw-mcp-demo")
 
     @mcp_server.tool(
-        title="Write to MobaXterm",
-        description="Write a command to MobaXterm and get the output"
+        title="写入远程终端",
+        description="在远程终端中执行命令，并返回输出结果",
     )
-    def write_to_mobaxterm(
-            cmd: Annotated[str, Field(description="The command to run in MobaXterm")],
+    def write_to_remote_shell(
+            command: Annotated[str, Field(description="要执行的命令")],
     ) -> str:
         shell = RemoteShell(r"C:\Users\henry\Desktop")
         try:
-            output = shell.send_command(cmd, timeout=5)
+            output = shell.send_command(command, timeout=600)
         finally:
             shell.close()
         return output
