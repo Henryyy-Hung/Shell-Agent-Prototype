@@ -27,7 +27,7 @@ logger:
     # Show chat User/Assistant messages on the console
     show_chat: true
     # Show tool calls on the console
-    show_tools: true
+    show_tools: false
     # Truncate long tool responses on the console 
     truncate_tools: true
 
@@ -35,10 +35,4 @@ logger:
 mcp:
     servers:
         remote_shell_toolkit:
-            # command: "D:\\ProgramData\\Visual Studio Code\\Shell-Agent\\Shell-Agent-MCP-Toolkit\\dist\\remote_shell_toolkit.exe"
-            command: "uv"
-            args:
-            - "--directory"
-            - "D:\\ProgramData\\Visual Studio Code\\Shell-Agent\\Shell-Agent-MCP-Toolkit"
-            - "run"
-            - "hw-mcp-shell-toolkit"
+             command: "./resources/remote_shell_toolkit.exe"
