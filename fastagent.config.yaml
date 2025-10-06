@@ -13,9 +13,9 @@
 default_model: "azure.gpt-4.1-mini" # Default model for all agents
 
 azure:
-  base_url: "https://oai-cherry-studio-ai-prod-sdc-01.openai.azure.com" # Full endpoint URL
+  base_url: "https://oai-cherry-studio-ai-prod-sdc-01.openai.azure.com"
   azure_deployment: "gpt-4.1-mini"
-  api_version: "2025-01-01-preview" # Optional
+  api_version: "2025-01-01-preview"
 
 # Logging and Console Configuration:
 logger:
